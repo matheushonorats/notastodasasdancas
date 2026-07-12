@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>VI Todas as Danças - Placar de Apuração</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { 
+      --bg: #3a0303; 
+      --dark: #1a1a1a; 
+      --gold: #D4AF37; 
+      --cream: #FDF5E6; 
+      --green: #27ae60; 
+      --red: #c0392b; 
+    }
+    body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--bg); color: var(--cream); padding-bottom: 25px; }
+    
+    #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(26,26,26,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+    .spinner { border: 4px solid rgba(212,175,55,0.2); border-left-color: var(--gold); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .main-header { background: linear-gradient(135deg, #1a0101 0%, #3a0303 100%); padding: 25px 20px; text-align: center; border-bottom: 2px solid var(--gold); box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    
+    #connection-indicator {
+      position: absolute;
+      top: 25px;
+      right: 30px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #27ae60;
+      box-shadow: 0 0 8px rgba(39, 174, 96, 0.6);
+      transition: all 0.3s ease;
+      cursor: help;
+      z-index: 10;
+    }
+    #connection-indicator.offline { background: #c0392b; box-shadow: 0 0 8px rgba(192, 57, 43, 0.6); }
+    #connection-indicator.syncing { background: #f39c12; box-shadow: 0 0 8px rgba(243, 156, 18, 0.6); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
+    
+    #connection-indicator::after {
+      content: attr(data-tooltip);
+      position: absolute; top: 100%; right: 0; margin-top: 8px;
+      padding: 6px 12px; background: rgba(26,26,26,0.95);
+      color: var(--cream); font-size: 11px; border-radius: 4px;
+      white-space: nowrap; opacity: 0; pointer-events: none;
+      transition: opacity 0.3s; z-index: 1000;
+    }
+    #connection-indicator:hover::after { opacity: 1; }
+
+    .container { max-width: 950px; margin: 30px auto; padding: 0 20px; }
+    .card { background: var(--dark); border-radius: 10px; padding: 25px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); border: 1px solid rgba(212,175,55,0.2); }
+    
+    h1, h2, h3 { font-family: 'Playfair Display', serif; color: var(--gold); margin-top:0; }
+    
+    .btn { padding: 12px 20px; border-radius: 5px; font-weight: 700; cursor: pointer; border: none; transition: 0.3s; }
+    .btn-gold { background: var(--gold); color: var(--dark); }
+    .btn-gold:hover { background: #ebd171; }
+    
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; color: var(--gold); border-bottom: 2px solid #000; padding: 12px 10px; font-size: 11px; }
+    td { padding: 12px 10px; border-bottom: 1px solid #333; font-size: 15px; vertical-align: middle; }
+
+    tr.rank-1 td { background: rgba(212,175,55,0.08); }
+    tr.rank-2 td { background: rgba(192,192,192,0.06); }
+    tr.rank-3 td { background: rgba(205,127,50,0.06); }
+    
+    .hidden { display: none !important; }
+
+    /* Estilos da Interface de Gerenciamento Retrátil */
+    .gen-container-box { background: #221111; border: 1px solid #552222; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
+    .gen-header-title { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #663333; padding-bottom: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .inner-items-list-accordion { background: #150a0a; border: 1px solid #441b1b; padding: 12px; border-radius: 4px; margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+    .inner-item-card { background: #1a1a1a; border: 1px solid #333; padding: 6px 10px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+    
+    input, select { background: #2a2a2a; border: 1px solid #444; color: white; padding: 8px; border-radius: 5px; font-family: 'Montserrat'; font-size: 14px; }
+    input:focus, select:focus { border-color: var(--gold); outline: none; }
+
+    @keyframes countUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .media-animated { display: inline-block; animation: countUp 0.4s ease-out both; }
+
+    /* ── BARRA DE FILTROS DO RELATÓRIO ── */
+    #filtro-mostra-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .filtro-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .filtro-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: rgba(212,175,55,0.7);
+      white-space: nowrap;
+    }
+    .filtro-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Montserrat', sans-serif;
+      cursor: pointer;
+      border: 1.5px solid rgba(212,175,55,0.25);
+      background: rgba(255,255,255,0.04);
+      color: rgba(253,245,230,0.6);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+    }
+    .chip:hover {
+      border-color: rgba(212,175,55,0.6);
+      color: var(--cream);
+      background: rgba(212,175,55,0.1);
+    }
+    .chip.active {
+      background: var(--gold);
+      color: var(--dark);
+      border-color: var(--gold);
+      box-shadow: 0 2px 10px rgba(212,175,55,0.35);
+    }
+    .chip.active:hover {
+      background: #ebd171;
+      border-color: #ebd171;
+    }
+    .filtro-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(212,175,55,0.2), transparent);
+      margin: 2px 0;
+    }
+    .actions-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn-action-slim {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: 'Montserrat', sans-serif;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .btn-action-slim.gold { background: var(--gold); color: var(--dark); }
+    .btn-action-slim.gold:hover { background: #ebd171; }
+    .btn-action-slim.green { background: var(--green); color: #fff; }
+    .btn-action-slim.green:hover { background: #2ecc71; }
+    .btn-action-slim.ghost { background: rgba(255,255,255,0.07); color: var(--cream); border: 1px solid rgba(255,255,255,0.15); }
+    .btn-action-slim.ghost:hover { background: rgba(255,255,255,0.12); }
+
+    /* ── CONFIGURAÇÕES AVANÇADAS DE IMPRESSÃO (PDF LIMPO SEM URL) ── */
+    @media print {
+      .no-print { display: none !important; }
+      
+      /* Oculta 100% os cabeçalhos/rodapés do navegador (URL, data, título) */
+      @page {
+        margin: 0 !important;
+      }
+      
+      body { 
+        background: #fff !important; 
+        color: #000 !important; 
+        padding: 0 1.5cm !important; /* Margem lateral consistente em todas as páginas */
+        margin: 0 !important;
+      }
+      
+      .card { background: #fff !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
+      
+      /* Cabeçalho impresso com logos preservados */
+      .main-header { 
+        background: linear-gradient(135deg, #1a0101 0%, #3a0303 100%) !important; 
+        border-bottom: 2px solid var(--gold) !important; 
+        padding: 20px !important; 
+        display: flex !important; 
+        justify-content: space-between !important; 
+        align-items: center !important;
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important;
+        margin-top: 1.2cm !important; /* Margem do topo na primeira página */
+        margin-bottom: 20px !important;
+      }
+      .main-header img { filter: none !important; } 
+
+      /* Evita cortes e garante recuo saudável de margem no topo e rodapé de todas as páginas */
+      .report-section-block { 
+        page-break-inside: avoid !important; 
+        break-inside: avoid !important; 
+        padding-top: 1.4cm !important; /* Afasta o conteúdo do topo da página na quebra (protegido contra colapso no Chrome) */
+        padding-bottom: 1.4cm !important; /* Afasta o conteúdo do rodapé na quebra */
+        box-sizing: border-box !important;
+      }
+      
+      /* Evita que o cabeçalho cinza da categoria fique órfão sozinho no final de uma página */
+      .report-section-header-box {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+      
+      table { page-break-inside: auto !important; break-inside: auto !important; }
+      tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+      
+      thead { display: table-header-group !important; }
+      tbody { display: table-row-group !important; }
+      
+      td, th { color: #000 !important; border-bottom: 1px solid #ddd !important; }
+      
+      footer { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="overlay">
+    <div class="spinner"></div>
+    <p id="loading-msg" style="margin-top:20px; color:var(--gold); font-weight:bold; text-align:center; padding:0 20px;"></p>
+  </div>
+
+  <header class="main-header" style="display:flex; justify-content:center; align-items:center; gap:30px; flex-wrap:wrap; position:relative;">
+    <div id="connection-indicator" data-tooltip="Online"></div>
+    <img src="https://i.ibb.co/wZp4LLGr/Captura-de-tela-2026-05-15-193320.png" alt="VI Todas as Danças" style="max-height:80px; object-fit:contain;" onerror="this.style.display='none'; document.getElementById('fallback-titulo').classList.remove('hidden');">
+    <div id="fallback-titulo" class="hidden" style="font-family:'Playfair Display', serif; color:var(--gold); font-size:24px; font-weight:bold; letter-spacing:1px; text-align:center;">VI TODAS AS DANÇAS</div>
+    
+    <img id="logo-prefeitura-cabecalho" src="https://www.saosebastiao.sp.gov.br/images/header-logo3b.png" alt="Prefeitura de São Sebastião" style="max-height:55px; object-fit:contain; display:inline-block;" onerror="this.style.display='none'; document.getElementById('fallback-prefeitura-cabecalho').classList.remove('hidden');">
+    <div id="fallback-prefeitura-cabecalho" class="hidden" style="font-family:'Montserrat', sans-serif; color:var(--cream); font-size:14px; font-weight:bold;">PREFEITURA DE SÃO SEBASTIÃO</div>
+  </header>
+
+  <div class="container">
+
+    <!-- Seção Unificada de Relatório e Apuração -->
+    <div id="view-relatorio">
+      
+      <!-- Accordion: Definir Ordem de Premiação -->
+      <div class="card no-print" style="margin-bottom: 15px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleAccordion('order-panel-content')">
+          <h3 style="margin-bottom:0; font-size:16px;">⚙️ Definir Ordem de Premiação (Ordem de Leitura)</h3>
+          <span id="order-toggle-icon" style="color: var(--gold); font-weight: bold; font-size: 16px;">▼</span>
+        </div>
+        
+        <div id="order-panel-content" class="hidden" style="margin-top: 15px;">
+          <p style="font-size:12px; opacity:0.7; margin-bottom:15px;">Ajuste a prioridade global dos Gêneros. Use o menu suspenso de cada Gênero para monitorar uma categoria ou abra as configurações internas.</p>
+          <div id="sort-categories-list" style="max-height:480px; overflow-y:auto; padding-right:5px;"></div>
+        </div>
+      </div>
+      
+      <!-- Barra de Filtros por Chips (Mostras) -->
+      <div id="filtro-mostra-bar" class="no-print">
+        <div class="filtro-row">
+          <span class="filtro-label">Mostra</span>
+          <div class="filtro-chips" id="chips-mostra">
+            <button class="chip active" data-mostra="" onclick="selectMostraChip(this, '')">Todas</button>
+          </div>
+        </div>
+        <div class="filtro-divider"></div>
+        <div class="actions-row">
+          <button class="btn-action-slim green" onclick="applyNewCustomOrder()">💾 Salvar Ordem de Gêneros</button>
+          <button class="btn-action-slim gold" onclick="window.print()">🖨️ Salvar como PDF / Imprimir</button>
+        </div>
+      </div>
+      
+      <!-- Tabela Principal de Rankings e Premiações -->
+      <div class="card" style="max-width:100%; background:#fff; color:#000; border:none; padding:35px;">
+        <div id="report-content"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+
+
+  <script>
+    function setIndicator(state) {
+      const el = document.getElementById('connection-indicator');
+      if (!el) return;
+      el.className = state === 'online' ? '' : state;
+      el.setAttribute('data-tooltip', state === 'syncing' ? 'Sincronizando...' : state === 'offline' ? 'Erro de conexão' : 'Online');
+    }
+    
+    let bd = { coreos: [], notas: [], categoriasOrdemRelatorio: [] };
+    window.lastUpdatedNumero = null;
+    let rankingTimer = null;
+    const RANKING_REFRESH_INTERVAL = 5000; // 5 segundos ── atualização dinâmica automática
+
+    // --- CACHE LOCAL ---
+    function saveLocalBD() {
+      try {
+        localStorage.setItem('notas_db_cache', JSON.stringify(bd));
+      } catch (e) {
+        console.warn("Falha ao salvar cache local:", e.message);
+      }
+    }
+
+    function loadLocalBD() {
+      try {
+        const cached = localStorage.getItem('notas_db_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.coreos && parsed.coreos.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        console.warn("Falha ao ler cache local:", e.message);
+      }
+      return null;
+    }
+
+    // --- WRAPPER DE TIMEOUT E REDE ---
+    function callServer(serverFunctionName, arg, successCallback, failureCallback) {
+      let completed = false;
+      
+      const timeoutId = setTimeout(() => {
+        if (!completed) {
+          completed = true;
+          const errMsg = "Tempo limite de 30 segundos excedido na comunicação com o servidor.";
+          console.warn(errMsg);
+          
+          showRetryScreen(errMsg, () => {
+            callServer(serverFunctionName, arg, successCallback, failureCallback);
+          });
+        }
+      }, 30000);
+      
+      const runner = google.script.run
+        .withSuccessHandler(response => {
+          if (!completed) {
+            completed = true;
+            clearTimeout(timeoutId);
+            successCallback(response);
+          }
+        })
+        .withFailureHandler(error => {
+          if (!completed) {
+            completed = true;
+            clearTimeout(timeoutId);
+            const errMsg = error ? (error.message || String(error)) : "Erro na rede.";
+            console.error("Falha no servidor:", errMsg);
+            
+            showRetryScreen(errMsg, () => {
+              callServer(serverFunctionName, arg, successCallback, failureCallback);
+            });
+          }
+        });
+      
+      if (arg !== undefined) {
+        runner[serverFunctionName](arg);
+      } else {
+        runner[serverFunctionName]();
+      }
+    }
+
+    function showRetryScreen(msg, retryFn) {
+      setIndicator('offline');
+      document.getElementById('loading-msg').innerHTML = `
+        <div style="background: rgba(243,156,18,0.1); border: 1px solid #f39c12; padding: 20px; border-radius: 8px; max-width: 500px; margin: 0 auto; text-align: center;">
+          <h3 style="color:#f39c12; margin-top:0; font-family:'Montserrat';">⚠️ Conexão Lenta ou Instável</h3>
+          <p style="color:#eee; font-size:14px; line-height:1.5; text-align:left;">${msg}</p>
+          <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+            <button class="btn btn-gold" id="btn-retry-action" style="width:auto; padding:10px 20px;">🔄 Tentar Novamente</button>
+            <button class="btn" style="background:#555; color:white; width:auto; padding:10px 20px;" onclick="unlockScreen()">Cancelar</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('overlay').classList.remove('hidden');
+      
+      const btnRetry = document.getElementById('btn-retry-action');
+      if (btnRetry) {
+        btnRetry.onclick = () => {
+          lockScreen("Reenviando dados para o servidor...");
+          retryFn();
+        };
+      }
+    }
+
+    // --- AUTO REFRESH DE RANKINGS ---
+    function startReportAutoRefresh() {
+      if (rankingTimer) clearInterval(rankingTimer);
+      let pollingAtivo = false;
+
+      rankingTimer = setInterval(() => {
+        // Não dispara se a tela de loading estiver aberta
+        if (!document.getElementById('overlay').classList.contains('hidden')) return;
+        if (pollingAtivo) return;
+
+        pollingAtivo = true;
+        google.script.run
+          .withSuccessHandler(res => {
+            pollingAtivo = false;
+            try {
+              const data = JSON.parse(res);
+              if (data.status !== 'error') {
+                bd.notas  = data.notas;
+                bd.coreos = data.coreografias;
+                if (data.ordemRelatorio && data.ordemRelatorio.length > 0) {
+                  bd.categoriasOrdemRelatorio = data.ordemRelatorio;
+                }
+                saveLocalBD();
+                renderFullReportContent();
+              }
+            } catch(e) { console.warn('Erro no auto-refresh:', e); }
+          })
+          .withFailureHandler(() => { pollingAtivo = false; })
+          .fetchAllData();
+      }, RANKING_REFRESH_INTERVAL);
+    }
+    window.currentLiveFilter = null;
+
+    // --- CARREGAMENTO INICIAL OFFLINE-FIRST ---
+    window.onload = () => {
+      startReportAutoRefresh();
+      
+      window.addEventListener('online', () => setIndicator('online'));
+      window.addEventListener('offline', () => setIndicator('offline'));
+      
+      const cachedData = loadLocalBD();
+      if (cachedData) {
+        bd = cachedData;
+        console.log("⚡ Base de dados carregada instantaneamente do cache local.");
+        initAppQuietly();
+        unlockScreen();
+      } else {
+        lockScreen("Baixando base de dados do Google Sheets...");
+      }
+      
+      callServer("fetchAllData", undefined, 
+        (jsonStr) => {
+          initApp(jsonStr);
+        },
+        (err) => {
+          if (cachedData) {
+            setIndicator('offline');
+            console.warn("Sem internet para atualizar dados. Mantendo dados em cache.");
+            alert("⚠️ Sem conexão com a internet. O sistema está rodando em MODO OFFLINE com os dados locais salvos em cache.");
+            unlockScreen();
+          } else {
+            crashScreen("Erro de Conexão Inicial: " + err.message);
+          }
+        }
+      );
+    };
+
+    function initAppQuietly() {
+      initReportOrdering();
+    }
+
+    function initApp(jsonStr) {
+      try {
+        const res = JSON.parse(jsonStr);
+        if (res.status === 'error') throw new Error(res.message);
+
+        bd.coreos  = res.coreografias;
+        bd.notas   = res.notas;
+
+        if (res.ordemRelatorio && res.ordemRelatorio.length > 0) {
+          bd.categoriasOrdemRelatorio = res.ordemRelatorio;
+        }
+
+        saveLocalBD();
+        unlockScreen();
+        initReportOrdering();
+      } catch (e) { crashScreen("Erro ao processar dados: " + e.message); }
+    }
+
+    // --- LOCK E UNLOCK ---
+    function lockScreen(msg) { setIndicator('syncing'); document.getElementById('loading-msg').innerText = msg; document.getElementById('overlay').classList.remove('hidden'); }
+    function unlockScreen() { setIndicator(navigator.onLine ? 'online' : 'offline'); document.getElementById('overlay').classList.add('hidden'); }
+    
+    // --- TELA DE CRASH ---
+    function crashScreen(msg) { 
+      setIndicator('offline'); 
+      document.getElementById('loading-msg').innerHTML = `
+        <div style="background: rgba(231,76,60,0.1); border: 1px solid #e74c3c; padding: 25px; border-radius: 8px; max-width: 500px; margin: 0 auto; text-align: center;">
+          <h3 style="color:#e74c3c; margin-top:0; font-family:'Montserrat';">⚠️ Falha no Sistema</h3>
+          <p style="color:#eee; font-size:14px; line-height:1.5; text-align:left;">${msg}</p>
+          <button class="btn btn-gold" onclick="window.location.reload()" style="margin-top:20px; width:auto; padding:10px 20px;">🔄 Recarregar Página</button>
+        </div>
+      `;
+      document.getElementById('overlay').classList.remove('hidden');
+    }
+
+    // ── FILTRAGEM POR MOSTRA NO RELATÓRIO (chips) ───────────────────────────
+    window.filtroMostraAtivo = "";
+    
+    function buildMostraChips() {
+      const container = document.getElementById('chips-mostra');
+      if (!container) return;
+
+      const anterior = window.filtroMostraAtivo;
+      const mostrasUnicas = new Set();
+
+      bd.coreos.forEach(c => {
+        const mostra = String(c['Mostra'] || '').trim();
+        if (mostra) mostrasUnicas.add(mostra);
+      });
+
+      container.innerHTML = '';
+
+      // Chip "Todas"
+      const chipTodas = document.createElement('button');
+      chipTodas.className = 'chip' + (anterior === '' ? ' active' : '');
+      chipTodas.setAttribute('data-mostra', '');
+      chipTodas.innerText = 'Todas';
+      chipTodas.onclick = () => selectMostraChip(chipTodas, '');
+      container.appendChild(chipTodas);
+
+      // Chips de cada Mostra
+      Array.from(mostrasUnicas).sort().forEach(m => {
+        const chip = document.createElement('button');
+        chip.className = 'chip' + (anterior === m ? ' active' : '');
+        chip.setAttribute('data-mostra', m);
+        chip.innerText = m;
+        chip.onclick = () => selectMostraChip(chip, m);
+        container.appendChild(chip);
+      });
+    }
+
+    function selectMostraChip(el, valor) {
+      window.filtroMostraAtivo = valor;
+      document.querySelectorAll('#chips-mostra .chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      renderFullReportContent();
+    }
+
+    // ── CONFIGURAÇÃO DE ORDEM DE CATEGORIAS (Ordem de Premiação) ───────────
+    function initReportOrdering() {
+      let catsPlanilha = new Set();
+      bd.coreos.forEach(c => {
+        if (c['Gênero'] && c['Subgênero'] && c['Categoria']) {
+          const gen = String(c['Gênero']).trim();
+          const sub = String(c['Subgênero']).trim();
+          const cat = String(c['Categoria']).trim();
+          if (gen && sub && cat) {
+            catsPlanilha.add(`${gen} | ${sub} | ${cat}`);
+          }
+        }
+      });
+
+      if (!bd.categoriasOrdemRelatorio || bd.categoriasOrdemRelatorio.length === 0) {
+        bd.categoriasOrdemRelatorio = Array.from(catsPlanilha).sort();
+      } else {
+        const normStr = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const existentesNormalizadas = new Set(bd.categoriasOrdemRelatorio.map(normStr));
+        
+        let novasCategorias = [];
+        catsPlanilha.forEach(cat => {
+          if (!existentesNormalizadas.has(normStr(cat))) {
+            novasCategorias.push(cat);
+          }
+        });
+        
+        if (novasCategorias.length > 0) {
+          console.log("⚡ Novas categorias detectadas e adicionadas ao placar:", novasCategorias);
+          novasCategorias.sort();
+          bd.categoriasOrdemRelatorio = bd.categoriasOrdemRelatorio.concat(novasCategorias);
+          saveLocalBD();
+        }
+      }
+      
+      buildMostraChips();
+      renderSortInterface();
+      renderFullReportContent();
+    }
+
+    function renderSortInterface() {
+      const container = document.getElementById('sort-categories-list');
+      if (!container) return;
+      container.innerHTML = "";
+
+      let generosOrdenados = [];
+      let mapaGeneros = {};
+
+      bd.categoriasOrdemRelatorio.forEach(catNome => {
+        const [genero, subgenero, categoria] = catNome.split(' | ');
+        if (!mapaGeneros[genero]) {
+          mapaGeneros[genero] = [];
+          generosOrdenados.push(genero);
+        }
+        mapaGeneros[genero].push({ fullName: catNome, subgenero, categoria });
+      });
+
+      generosOrdenados.forEach((gen, gIdx) => {
+        let genBox = document.createElement('div');
+        genBox.className = "gen-container-box";
+        
+        genBox.innerHTML = `
+          <div class="gen-header-title">
+            <input type="number" class="inp-gen-order" data-gen-name="${gen}" value="${gIdx + 1}" style="width:50px; margin-bottom:0; padding:6px; text-align:center; font-weight:bold; color:var(--gold);">
+            <h3 style="margin:0; font-size:14px; text-transform:uppercase; flex-grow:1;">${gen}</h3>
+            
+            <select class="sel-live-view-trigger" style="width:250px; margin-bottom:0; padding:6px; font-size:12px; height:34px;" onchange="onDropdownLiveSelect(this)">
+              <option value="">📺 Monitorar Categoria...</option>
+              ${mapaGeneros[gen].map(item => `<option value="${item.fullName}" ${window.currentLiveFilter === item.fullName ? 'selected' : ''}>${item.categoria} (${item.subgenero})</option>`).join('')}
+            </select>
+            
+            <button class="btn btn-gold" style="padding:6px 12px; font-size:12px; width:auto;" onclick="toggleAccordion('acc-${gIdx}')">⚙️ Ajustar Ordens</button>
+          </div>
+          
+          <div class="inner-items-list-accordion hidden" id="acc-${gIdx}"></div>
+        `;
+        container.appendChild(genBox);
+
+        let accordionList = genBox.querySelector(`#acc-${gIdx}`);
+        mapaGeneros[gen].forEach((item, iIdx) => {
+          let itemCard = document.createElement('div');
+          itemCard.className = "inner-item-card";
+          itemCard.innerHTML = `
+            <input type="number" class="inp-item-inner-order" data-full-name="${item.fullName}" data-gen-parent="${gen}" value="${iIdx + 1}" style="width:45px; margin-bottom:0; padding:4px; text-align:center; font-size:12px; background:#111; color:#fff;">
+            <span style="font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${item.categoria} | ${item.subgenero}">
+              <strong>${item.categoria}</strong> - <span style="opacity:0.7">${item.subgenero}</span>
+            </span>
+          `;
+          accordionList.appendChild(itemCard);
+        });
+      });
+    }
+
+    function toggleAccordion(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('hidden');
+      
+      if (id === 'order-panel-content') {
+        const icon = document.getElementById('order-toggle-icon');
+        if (icon) icon.innerText = el.classList.contains('hidden') ? '▼' : '▲';
+      }
+    }
+
+    function onDropdownLiveSelect(selectEl) {
+      if (selectEl.value) {
+        window.currentLiveFilter = selectEl.value;
+      } else {
+        window.currentLiveFilter = null;
+      }
+      renderFullReportContent();
+      document.getElementById('report-content').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearLiveFilter() {
+      window.currentLiveFilter = null;
+      renderSortInterface();
+      renderFullReportContent();
+    }
+
+    function applyNewCustomOrder() {
+      const container = document.getElementById('sort-categories-list');
+      if (!container) return;
+      
+      let genOrders = {};
+      container.querySelectorAll('.inp-gen-order').forEach(inp => {
+        genOrders[inp.getAttribute('data-gen-name')] = parseInt(inp.value) || 99;
+      });
+
+      let flatMapeamento = [];
+      container.querySelectorAll('.inp-item-inner-order').forEach(inp => {
+        const fullName = inp.getAttribute('data-full-name');
+        const genParent = inp.getAttribute('data-gen-parent');
+        const itemOrder = parseInt(inp.value) || 99;
+        const genOrder = genOrders[genParent] || 99;
+        
+        flatMapeamento.push({ fullName, genOrder, itemOrder });
+      });
+
+      flatMapeamento.sort((a, b) => {
+        if (a.genOrder !== b.genOrder) return a.genOrder - b.genOrder;
+        return a.itemOrder - b.itemOrder;
+      });
+
+      bd.categoriasOrdemRelatorio = flatMapeamento.map(i => i.fullName);
+      
+      lockScreen("Salvando nova ordem de premiação no banco remoto...");
+      
+      callServer("saveOrdemRelatorioNoServer", JSON.stringify(bd.categoriasOrdemRelatorio), 
+        resStr => {
+          saveLocalBD();
+          unlockScreen();
+          renderSortInterface();
+          renderFullReportContent();
+          alert("Configurações salvas e aplicadas em todas as máquinas!");
+        }, 
+        err => { unlockScreen(); alert("Erro ao salvar ordem: " + err.message); }
+      );
+    }
+
+    // ── RENDERIZAÇÃO DO RELATÓRIO DO EVENTO (DETECÇÃO DE EMPATES E LIMIARES) ──
+    function renderFullReportContent() {
+      const container = document.getElementById('report-content');
+      if (!container) return;
+      container.innerHTML = "";
+      
+      if (bd.coreos.length === 0) {
+        container.innerHTML = "<p style='text-align:center; padding:20px; color:#000;'>Nenhuma coreografia cadastrada.</p>";
+        return;
+      }
+
+      const filtroMostra = window.filtroMostraAtivo || "";
+
+      if (filtroMostra) {
+        let bannerMostra = document.createElement('div');
+        bannerMostra.style.cssText = "text-align:center; margin-bottom:20px; border-bottom:2px dashed var(--gold); padding-bottom:15px; color:#3a0303;";
+        bannerMostra.innerHTML = `
+          <h2 style="font-family:'Playfair Display', serif; font-size:24px; color:#3a0303; margin:0 0 5px 0;">RELATÓRIO DE PREMIAÇÃO</h2>
+          <span style="font-family:'Montserrat', sans-serif; font-size:16px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; background:#3a0303; color:#fff; padding:4px 15px; border-radius:3px;">MOSTRA: ${filtroMostra}</span>
+        `;
+        container.appendChild(bannerMostra);
+      }
+
+      if (window.currentLiveFilter) {
+        let banner = document.createElement('div');
+        banner.className = "no-print";
+        banner.style.cssText = "background:var(--gold); color:var(--dark); padding:12px; margin-bottom:25px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; font-weight:bold; font-size:13px; box-shadow:0 4px 10px rgba(0,0,0,0.2);";
+        banner.innerHTML = `
+          <span>📺 MONITORAMENTO ISOLADO: ${window.currentLiveFilter}</span>
+          <button class="btn" style="background:var(--dark); color:var(--cream); padding:5px 12px; font-size:11px; border-radius:4px;" onclick="clearLiveFilter()">Ver Tudo</button>
+        `;
+        container.appendChild(banner);
+      }
+
+      const norm = (s) => (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+
+      bd.categoriasOrdemRelatorio.forEach(catNome => {
+        if (window.currentLiveFilter && norm(catNome) !== norm(window.currentLiveFilter)) return;
+
+        let filtrados = bd.coreos.filter(c => {
+          const matchCat = norm(`${c['Gênero']} | ${c['Subgênero']} | ${c['Categoria']}`) === norm(catNome);
+          if (!matchCat) return false;
+          
+          if (filtroMostra) {
+            return String(c['Mostra'] || '').trim() === filtroMostra;
+          }
+          return true;
+        }).map(c => {
+          const nota = bd.notas.find(n => String(n['Nº de Ordem']).trim() === String(c['Nº de Ordem Global']).trim());
+          const j1Val = (nota && nota['Jurado 1'] !== undefined && nota['Jurado 1'] !== '') ? parseFloat(String(nota['Jurado 1']).replace(',', '.')) : null;
+          const j2Val = (nota && nota['Jurado 2'] !== undefined && nota['Jurado 2'] !== '') ? parseFloat(String(nota['Jurado 2']).replace(',', '.')) : null;
+          const j3Val = (nota && nota['Jurado 3'] !== undefined && nota['Jurado 3'] !== '') ? parseFloat(String(nota['Jurado 3']).replace(',', '.')) : null;
+          
+          // Uma coreografia só é considerada avaliada se as notas dos 3 jurados estiverem preenchidas
+          const temAsTresNotas = (j1Val !== null && !isNaN(j1Val) && j2Val !== null && !isNaN(j2Val) && j3Val !== null && !isNaN(j3Val));
+          
+          return {
+            numero: c['Nº de Ordem Global'],
+            nome: c['Nome da Coreografia'],
+            grupo: c['Grupo/Companhia/Academia'],
+            status: (c['Status'] || '').trim(),
+            j1: j1Val,
+            j2: j2Val,
+            j3: j3Val,
+            media: temAsTresNotas ? ((nota && nota['Média'] !== '') ? parseFloat(String(nota['Média']).replace(',', '.')) : null) : null,
+            maiorNota: temAsTresNotas ? ((nota && nota['Maior Nota'] !== '') ? parseFloat(String(nota['Maior Nota']).replace(',', '.')) : null) : null
+          };
+        });
+
+        if (filtrados.length === 0) return;
+
+        const parts = catNome.split(' | ');
+        const generoVal = parts[0] || '';
+        const subgeneroVal = parts[1] || '';
+        const categoriaVal = parts[2] || '';
+
+        let secao = document.createElement('div');
+        secao.className = "report-section-block";
+        secao.innerHTML = `
+          <div class="report-section-header-box" style="background:#f2f2f2; color:#3a0303; padding:10px 12px; margin-bottom:12px; border-left:4px solid #3a0303; margin-top:0; font-family:'Montserrat',sans-serif;">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.4;">
+              <div><span style="color:#777; font-weight:600;">GÊNERO:</span> <strong style="color:#3a0303; font-weight:700;">${generoVal}</strong></div>
+              <div style="color:#bbb;">|</div>
+              <div><span style="color:#777; font-weight:600;">SUBGÊNERO:</span> <strong style="color:#3a0303; font-weight:700;">${subgeneroVal}</strong></div>
+              <div style="color:#bbb;">|</div>
+              <div><span style="color:#777; font-weight:600;">CATEGORIA:</span> <strong style="color:#3a0303; font-weight:700;">${categoriaVal}</strong></div>
+            </div>
+          </div>`;
+
+        let tabela = document.createElement('table');
+        tabela.style.width = "100%"; tabela.style.color = "#000";
+        tabela.innerHTML = `<thead><tr style="text-align:left; font-size:11px; border-bottom:2px solid #000; color:#000;"><th width="120">PREMIAÇÃO</th><th width="40">Nº</th><th>COREOGRAFIA / GRUPO</th><th width="100">NOTAS (J1/J2/J3)</th><th width="60">MÉDIA</th></tr></thead><tbody></tbody>`;
+        let tbody = tabela.querySelector('tbody');
+
+        filtrados.sort((a, b) => {
+          const getStatusPriority = (item) => {
+            const st = (item.status || '').trim();
+            if (st === 'Julgada') return 1;
+            if (st === 'Ausente/Pulada') return 4;
+            if (st === 'Apenas Mostra') return 3;
+            return 2; // Aguardando
+          };
+          
+          const pA = getStatusPriority(a);
+          const pB = getStatusPriority(b);
+          
+          if (pA !== pB) return pA - pB;
+          
+          if (pA === 1) {
+            if (a.media !== null && b.media !== null) {
+              if (Math.abs(b.media - a.media) > 0.001) return b.media - a.media;
+              return (b.maiorNota || 0) - (a.maiorNota || 0);
+            }
+            if (a.media !== null) return -1;
+            if (b.media !== null) return 1;
+          }
+          
+          return parseInt(a.numero) - parseInt(b.numero);
+        });
+
+        // Detecção de Empates Persistentes
+        const hasPersistentTie = (index) => {
+          const item = filtrados[index];
+          if (item.media === null || item.status === 'Ausente/Pulada' || item.status === 'Apenas Mostra') return false;
+          
+          if (index > 0) {
+            const prev = filtrados[index - 1];
+            if (prev.status !== 'Ausente/Pulada' && prev.media !== null) {
+              if (Math.abs(prev.media - item.media) < 0.001 && Math.abs((prev.maiorNota || 0) - (item.maiorNota || 0)) < 0.001) {
+                return true;
+              }
+            }
+          }
+          if (index < filtrados.length - 1) {
+            const next = filtrados[index + 1];
+            if (next.status !== 'Ausente/Pulada' && next.media !== null) {
+              if (Math.abs(next.media - item.media) < 0.001 && Math.abs((next.maiorNota || 0) - (item.maiorNota || 0)) < 0.001) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+
+        let trophy = 1;
+        filtrados.forEach((item, fIdx) => {
+          let premio = "Partic.";
+          let aviso = "";
+          let estiloLinha = "";
+          let classeAnimacaoTr = "";
+          let classeAnimacaoMedia = "";
+
+          const ehAlvoModificado = (item.numero === window.lastUpdatedNumero);
+
+          if (item.status === 'Ausente/Pulada') {
+            premio = "❌ Ausente";
+            estiloLinha = "opacity: 0.5;";
+          } else if (item.status === 'Apenas Mostra') {
+            premio = "<span style='color: #777; font-weight: 600; font-size: 12px;'>✨ Apenas Mostra</span>";
+            estiloLinha = "background-color: rgba(0,0,0,0.03); color: #555; font-style: italic;";
+          } else if (item.media === null) {
+            premio = "⏳ Pendente";
+            estiloLinha = "color: #777; font-style: italic;";
+          } else {
+            const m = item.media;
+            let skippedRank = false;
+            let skippedReason = "";
+            if (trophy === 1) {
+              if (m >= 9.0)      { premio = "🥇 1º Lugar"; if(ehAlvoModificado) classeAnimacaoTr = "rank-1"; trophy = 2; }
+              else if (m >= 8.0) { premio = "🥈 2º Lugar"; if(ehAlvoModificado) classeAnimacaoTr = "rank-2"; trophy = 3; skippedRank = true; skippedReason = "Média < 9.0"; }
+              else if (m >= 7.0) { premio = "🥉 3º Lugar"; if(ehAlvoModificado) classeAnimacaoTr = "rank-3"; trophy = 4; skippedRank = true; skippedReason = "Média < 8.0"; }
+              else trophy = 4;
+            } else if (trophy === 2) {
+              if (m >= 8.0)      { premio = "🥈 2º Lugar"; if(ehAlvoModificado) classeAnimacaoTr = "rank-2"; trophy = 3; }
+              else if (m >= 7.0) { premio = "🥉 3º Lugar"; if(ehAlvoModificado) classeAnimacaoTr = "rank-3"; trophy = 4; skippedRank = true; skippedReason = "Média < 8.0"; }
+              else trophy = 4;
+            } else if (trophy === 3) {
+              if (m >= 7.0)      { premio = "🥉 3º Lugar"; if(ehAlvoModificado) classeAnimacaoTr = "rank-3"; trophy = 4; }
+              else trophy = 4;
+            }
+            
+            if (skippedRank) {
+              premio += `<span style="color:#aaa; font-size:10px; font-weight:normal; vertical-align:super; cursor:help; margin-left:2px;" title="Limiar de pontuação mínima não atingido para a colocação superior: ${skippedReason} (Edital Item 7.3)">*</span>`;
+            }
+            
+            if (hasPersistentTie(fIdx)) {
+              aviso = `<span style="color:var(--red); font-weight:bold; font-size:10px; display:inline-block; margin-left:4px; padding: 2px 5px; background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.2); border-radius: 3px;" title="Empate persistente na Média e na Maior Nota (Item 7.4.1.1: decisão do júri)">⚠️ EMPATE</span>`;
+            }
+            
+            if (ehAlvoModificado) { classeAnimacaoMedia = "media-animated"; }
+          }
+
+          const j1Str = item.j1 !== null && !isNaN(item.j1) ? item.j1.toFixed(1) : "-";
+          const j2Str = item.j2 !== null && !isNaN(item.j2) ? item.j2.toFixed(1) : "-";
+          const j3Str = item.j3 !== null && !isNaN(item.j3) ? item.j3.toFixed(1) : "-";
+          const mediaStr = item.media !== null && !isNaN(item.media) ? item.media.toFixed(2) : "-";
+
+          let tr = document.createElement('tr');
+          tr.style.borderBottom = "1px solid #eee";
+          if (estiloLinha) tr.style.cssText += estiloLinha;
+          if (classeAnimacaoTr) tr.className = classeAnimacaoTr;
+          
+          if (ehAlvoModificado) { tr.style.backgroundColor = "rgba(214, 175, 55, 0.15)"; }
+          
+          tr.innerHTML = `
+            <td style="padding:6px 0; font-size:13px; color:#000;"><strong>${premio}</strong> ${aviso}</td>
+            <td style="font-size:11px; color:#777; vertical-align:middle;">${item.numero}</td>
+            <td style="padding:6px 0; color:#000;"><strong>${item.nome}</strong><br><small style="color:#555;">${item.grupo}</small></td>
+            <td style="font-size:12px; color:#555; vertical-align:middle;">${j1Str} / ${j2Str} / ${j3Str}</td>
+            <td style="font-size:15px; color:#000; vertical-align:middle;"><strong><span class="${classeAnimacaoMedia}">${mediaStr}</span></strong></td>
+          `;
+          tbody.appendChild(tr);
+        });
+        secao.appendChild(tabela);
+        container.appendChild(secao);
+      });
+      window.lastUpdatedNumero = null;
+    }
+  </script>
+</body>
+</html>
